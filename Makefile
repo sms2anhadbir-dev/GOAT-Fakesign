@@ -9,7 +9,7 @@ APPLICATION_NAME = GOATSign
 GOATSign_FILES = Application/main.m Application/AppDelegate.m Application/RootViewController.m Application/Signer.m
 GOATSign_FRAMEWORKS = UIKit Foundation MobileCoreServices UniformTypeIdentifiers
 GOATSign_LIBRARIES = archive
-GOATSign_CFLAGS = -fobjc-arc -Wall
+GOATSign_CFLAGS = -fobjc-arc -Wall -IApplication/Headers -Wno-error=nullability-completeness -Wno-error=deprecated-declarations
 GOATSign_INFOPLIST = Application/GOATSign-Info.plist
 
 include $(THEOS_MAKE_PATH)/application.mk
