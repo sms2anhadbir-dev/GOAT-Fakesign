@@ -6,7 +6,7 @@ include $(THEOS)/makefiles/common.mk
 
 APPLICATION_NAME = GOATSign
 
-GOATSign_FILES = Application/main.m Application/AppDelegate.m Application/RootViewController.m Application/Signer.m
+GOATSign_FILES = Application/main.m Application/AppDelegate.m Application/RootViewController.m Application/Signer.m Application/RepoManager.m Application/ArchiveManager.m Application/SourcesViewController.m
 GOATSign_FRAMEWORKS = UIKit Foundation MobileCoreServices UniformTypeIdentifiers
 GOATSign_LIBRARIES = archive
 GOATSign_CFLAGS = -fobjc-arc -Wall -IApplication/Headers -Wno-error=nullability-completeness -Wno-error=deprecated-declarations

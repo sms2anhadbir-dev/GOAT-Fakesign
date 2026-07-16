@@ -1,5 +1,6 @@
 #import "RootViewController.h"
 #import "Signer.h"
+#import "SourcesViewController.h"
 #import <MobileCoreServices/MobileCoreServices.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
@@ -15,6 +16,9 @@
 	[super viewDidLoad];
 	self.title = @"GOAT Sign";
 	self.view.backgroundColor = [UIColor systemBackgroundColor];
+
+	self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
+		initWithTitle:@"Sources" style:UIBarButtonItemStylePlain target:self action:@selector(openSources)];
 
 	self.pickButton = [UIButton buttonWithType:UIButtonTypeSystem];
 	[self.pickButton setTitle:@"Select IPA" forState:UIControlStateNormal];
@@ -39,6 +43,10 @@
 		[self.statusLabel.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:32],
 		[self.statusLabel.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-32],
 	]];
+}
+
+- (void)openSources {
+	[self.navigationController pushViewController:[SourcesViewController new] animated:YES];
 }
 
 - (void)pickIPA {
