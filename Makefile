@@ -16,8 +16,6 @@ include $(THEOS_MAKE_PATH)/application.mk
 
 after-stage::
 	@mkdir -p $(THEOS_STAGING_DIR)/Applications/GOATSign.app
-	@cp Application/Resources/ldid $(THEOS_STAGING_DIR)/Applications/GOATSign.app/ldid
-	@chmod 755 $(THEOS_STAGING_DIR)/Applications/GOATSign.app/ldid
 	@if [ -f Application/Resources/zsign ]; then \
 		cp Application/Resources/zsign $(THEOS_STAGING_DIR)/Applications/GOATSign.app/zsign; \
 		chmod 755 $(THEOS_STAGING_DIR)/Applications/GOATSign.app/zsign; \
@@ -26,4 +24,4 @@ after-stage::
 	fi
 
 after-package::
-	@echo "GOATSign.ipa built (unsigned). Run: ldid -S <path-to-GOATSign-executable> to fakesign the app itself before installing."
+	@echo "GOATSign.ipa built (unsigned). Sign it with your host zsign build + your own p12/mobileprovision before installing."
