@@ -2,6 +2,7 @@
 #import "RepoManager.h"
 #import "ArchiveManager.h"
 #import "Signer.h"
+#import "CertManager.h"
 
 static NSString *const kSourcesDefaultsKey = @"GOATSignSourceURLs";
 
@@ -156,13 +157,13 @@ static NSString *const kSourcesDefaultsKey = @"GOATSignSourceURLs";
 	if (!localPath) return;
 	NSURL *ipaURL = [NSURL fileURLWithPath:localPath];
 
-	UIAlertController *progressAlert = [UIAlertController alertControllerWithTitle:@"Fakesigning…"
+	BOOL useRealSign = [CertManager hasCertConfigured];
+	UIAlertController *progressAlert = [UIAlertController alertControllerWithTitle:useRealSign ? @"Signing…" : @"Fakesigning…"
 		message:@"" preferredStyle:UIAlertControllerStyleAlert];
 	[self presentViewController:progressAlert animated:YES completion:nil];
 
-	[Signer fakesignIPAAtURL:ipaURL progress:^(NSString *message) {
-		progressAlert.message = message;
-	} completion:^(NSURL *signedIPA, NSError *error) {
+	SignerProgress progressBlock = ^(NSString *message) { progressAlert.message = message; };
+	SignerCompletion completionBlock = ^(NSURL *signedIPA, NSError *error) {
 		[progressAlert dismissViewControllerAnimated:YES completion:^{
 			if (error) {
 				UIAlertController *err = [UIAlertController alertControllerWithTitle:@"Signing Failed"
@@ -175,7 +176,18 @@ static NSString *const kSourcesDefaultsKey = @"GOATSignSourceURLs";
 			activity.popoverPresentationController.sourceView = self.view;
 			[self presentViewController:activity animated:YES completion:nil];
 		}];
-	}];
+	};
+
+	if (useRealSign) {
+		[Signer signIPAAtURL:ipaURL
+		              p12URL:[CertManager p12URL]
+		         p12Password:[CertManager p12Password]
+		        provisionURL:[CertManager provisionURL]
+		            progress:progressBlock
+		          completion:completionBlock];
+	} else {
+		[Signer fakesignIPAAtURL:ipaURL progress:progressBlock completion:completionBlock];
+	}
 }
 
 @end

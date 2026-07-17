@@ -1,12 +1,15 @@
 #import "RootViewController.h"
 #import "Signer.h"
 #import "SourcesViewController.h"
+#import "CertViewController.h"
+#import "CertManager.h"
 #import <MobileCoreServices/MobileCoreServices.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 @interface RootViewController () <UIDocumentPickerDelegate>
 @property (nonatomic, strong) UILabel *statusLabel;
 @property (nonatomic, strong) UIButton *pickButton;
+@property (nonatomic, strong) UISegmentedControl *modeControl;
 @property (nonatomic, strong) NSURL *pickedIPA;
 @end
 
@@ -19,6 +22,13 @@
 
 	self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
 		initWithTitle:@"Sources" style:UIBarButtonItemStylePlain target:self action:@selector(openSources)];
+	self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc]
+		initWithTitle:@"Cert" style:UIBarButtonItemStylePlain target:self action:@selector(openCert)];
+
+	self.modeControl = [[UISegmentedControl alloc] initWithItems:@[@"Fakesign", @"Real Sign"]];
+	self.modeControl.selectedSegmentIndex = 0;
+	self.modeControl.translatesAutoresizingMaskIntoConstraints = NO;
+	[self.view addSubview:self.modeControl];
 
 	self.pickButton = [UIButton buttonWithType:UIButtonTypeSystem];
 	[self.pickButton setTitle:@"Select IPA" forState:UIControlStateNormal];
@@ -36,6 +46,9 @@
 	[self.view addSubview:self.statusLabel];
 
 	[NSLayoutConstraint activateConstraints:@[
+		[self.modeControl.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
+		[self.modeControl.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor constant:-90],
+		[self.modeControl.widthAnchor constraintEqualToConstant:220],
 		[self.pickButton.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
 		[self.pickButton.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor constant:-40],
 		[self.statusLabel.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
@@ -49,6 +62,10 @@
 	[self.navigationController pushViewController:[SourcesViewController new] animated:YES];
 }
 
+- (void)openCert {
+	[self.navigationController pushViewController:[CertViewController new] animated:YES];
+}
+
 - (void)pickIPA {
 	NSArray *types = @[@"public.data"];
 	UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initWithDocumentTypes:types inMode:UIDocumentPickerModeImport];
@@ -60,6 +77,15 @@
 	NSURL *url = urls.firstObject;
 	if (!url) return;
 	self.pickedIPA = url;
+
+	if (self.modeControl.selectedSegmentIndex == 1) {
+		[self realSignIPA:url];
+	} else {
+		[self fakesignIPA:url];
+	}
+}
+
+- (void)fakesignIPA:(NSURL *)url {
 	self.statusLabel.text = [NSString stringWithFormat:@"Selected: %@\nFakesigning...", url.lastPathComponent];
 
 	[Signer fakesignIPAAtURL:url progress:^(NSString *message) {
@@ -70,6 +96,30 @@
 			return;
 		}
 		self.statusLabel.text = [NSString stringWithFormat:@"Fakesigned: %@\nTap Share to install.", signedIPA.lastPathComponent];
+		[self offerToShare:signedIPA];
+	}];
+}
+
+- (void)realSignIPA:(NSURL *)url {
+	if (![CertManager hasCertConfigured]) {
+		self.statusLabel.text = @"No certificate configured.\nTap Cert to add your .p12 + .mobileprovision.";
+		return;
+	}
+
+	self.statusLabel.text = [NSString stringWithFormat:@"Selected: %@\nSigning...", url.lastPathComponent];
+
+	[Signer signIPAAtURL:url
+	              p12URL:[CertManager p12URL]
+	         p12Password:[CertManager p12Password]
+	        provisionURL:[CertManager provisionURL]
+	            progress:^(NSString *message) {
+		self.statusLabel.text = message;
+	} completion:^(NSURL *signedIPA, NSError *error) {
+		if (error) {
+			self.statusLabel.text = [NSString stringWithFormat:@"Failed: %@", error.localizedDescription];
+			return;
+		}
+		self.statusLabel.text = [NSString stringWithFormat:@"Signed: %@\nTap Share to install.", signedIPA.lastPathComponent];
 		[self offerToShare:signedIPA];
 	}];
 }

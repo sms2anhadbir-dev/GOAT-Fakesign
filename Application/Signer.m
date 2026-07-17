@@ -132,6 +132,75 @@ extern char **environ;
 	return WIFEXITED(wstatus) && WEXITSTATUS(wstatus) == 0;
 }
 
+#pragma mark - zsign (real cert signing)
+
++ (BOOL)runZsignWithArguments:(NSArray<NSString *> *)args error:(NSError **)error {
+	NSString *zsignPath = [[NSBundle mainBundle] pathForResource:@"zsign" ofType:nil];
+	if (!zsignPath) {
+		if (error) *error = [NSError errorWithDomain:@"Signer" code:5 userInfo:@{NSLocalizedDescriptionKey: @"zsign binary not bundled in app"}];
+		return NO;
+	}
+
+	NSMutableArray *fullArgs = [NSMutableArray arrayWithObject:zsignPath];
+	[fullArgs addObjectsFromArray:args];
+
+	char **argv = malloc(sizeof(char *) * (fullArgs.count + 1));
+	for (NSUInteger i = 0; i < fullArgs.count; i++) {
+		argv[i] = (char *)[fullArgs[i] fileSystemRepresentation];
+	}
+	argv[fullArgs.count] = NULL;
+
+	pid_t pid;
+	int status = posix_spawn(&pid, zsignPath.fileSystemRepresentation, NULL, NULL, argv, environ);
+	free(argv);
+
+	if (status != 0) {
+		if (error) *error = [NSError errorWithDomain:@"Signer" code:6 userInfo:@{NSLocalizedDescriptionKey: @"Failed to spawn zsign"}];
+		return NO;
+	}
+	int wstatus;
+	waitpid(pid, &wstatus, 0);
+	if (!WIFEXITED(wstatus) || WEXITSTATUS(wstatus) != 0) {
+		if (error) *error = [NSError errorWithDomain:@"Signer" code:7 userInfo:@{NSLocalizedDescriptionKey: @"zsign exited with an error - check certificate, password, and provisioning profile"}];
+		return NO;
+	}
+	return YES;
+}
+
++ (void)signIPAAtURL:(NSURL *)ipaURL
+             p12URL:(NSURL *)p12URL
+        p12Password:(NSString *)p12Password
+    provisionURL:(NSURL *)provisionURL
+           progress:(SignerProgress)progress
+         completion:(SignerCompletion)completion {
+	dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+		if (progress) dispatch_async(dispatch_get_main_queue(), ^{ progress(@"Signing with your certificate..."); });
+
+		NSString *outPath = [NSTemporaryDirectory() stringByAppendingPathComponent:
+			[NSString stringWithFormat:@"%@-signed.ipa", ipaURL.lastPathComponent.stringByDeletingPathExtension]];
+		[[NSFileManager defaultManager] removeItemAtPath:outPath error:nil];
+
+		NSArray *args = @[
+			@"-k", p12URL.path,
+			@"-p", p12Password ?: @"",
+			@"-m", provisionURL.path,
+			@"-o", outPath,
+			ipaURL.path,
+		];
+
+		NSError *error;
+		BOOL ok = [self runZsignWithArguments:args error:&error];
+
+		dispatch_async(dispatch_get_main_queue(), ^{
+			if (!ok) {
+				completion(nil, error);
+			} else {
+				completion([NSURL fileURLWithPath:outPath], nil);
+			}
+		});
+	});
+}
+
 #pragma mark - public entry point
 
 + (void)fakesignIPAAtURL:(NSURL *)ipaURL
