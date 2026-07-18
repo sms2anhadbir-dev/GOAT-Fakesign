@@ -77,7 +77,8 @@
 	ArchiveDownloadObserver *observer = [ArchiveDownloadObserver new];
 	observer.progressBlock = progress;
 
-	NSURLSessionDownloadTask *task = [[NSURLSession sharedSession] downloadTaskWithURL:url
+	__block NSURLSessionDownloadTask *task;
+	task = [[NSURLSession sharedSession] downloadTaskWithURL:url
 		completionHandler:^(NSURL *tempLocation, NSURLResponse *response, NSError *error) {
 			[task removeObserver:observer forKeyPath:@"progress" context:nil];
 
