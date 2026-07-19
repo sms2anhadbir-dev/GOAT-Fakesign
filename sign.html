@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GOAT Sign — In-Browser Signer</title>
+<style>
+	:root { color-scheme: dark; }
+	body {
+		font-family: -apple-system, system-ui, sans-serif;
+		background: #0b0b0f;
+		color: #eee;
+		margin: 0;
+		padding: 2rem 1rem;
+		display: flex;
+		justify-content: center;
+	}
+	.card {
+		width: 100%;
+		max-width: 460px;
+	}
+	h1 { font-size: 1.5rem; margin: 0 0 0.25rem; }
+	.sub { color: #999; margin: 0 0 1.5rem; font-size: 0.9rem; }
+	.privacy {
+		background: #111827;
+		border: 1px solid #1f2937;
+		border-radius: 10px;
+		padding: 0.75rem 1rem;
+		font-size: 0.8rem;
+		color: #9ca3af;
+		margin-bottom: 1.5rem;
+		line-height: 1.4;
+	}
+	label { display: block; font-size: 0.85rem; margin: 1rem 0 0.35rem; color: #d1d5db; }
+	input[type=file], input[type=password] {
+		width: 100%;
+		box-sizing: border-box;
+		background: #111827;
+		border: 1px solid #374151;
+		border-radius: 8px;
+		color: #eee;
+		padding: 0.6rem 0.75rem;
+		font-size: 0.9rem;
+	}
+	button {
+		margin-top: 1.75rem;
+		width: 100%;
+		padding: 0.85rem;
+		background: #fff;
+		color: #0b0b0f;
+		border: none;
+		border-radius: 10px;
+		font-weight: 600;
+		font-size: 1rem;
+		cursor: pointer;
+	}
+	button:disabled { opacity: 0.5; cursor: default; }
+	#log {
+		margin-top: 1.25rem;
+		font-family: ui-monospace, monospace;
+		font-size: 0.78rem;
+		color: #9ca3af;
+		white-space: pre-wrap;
+		word-break: break-word;
+		max-height: 220px;
+		overflow-y: auto;
+	}
+	a.download {
+		display: block;
+		margin-top: 1.25rem;
+		text-align: center;
+		padding: 0.85rem;
+		background: #16a34a;
+		color: #fff;
+		border-radius: 10px;
+		text-decoration: none;
+		font-weight: 600;
+	}
+</style>
+</head>
+<body>
+<div class="card">
+	<h1>GOAT Sign</h1>
+	<p class="sub">In-browser IPA signer &middot; v1.0.0</p>
+
+	<div class="privacy">
+		🔒 Your certificate, password, and app are processed entirely inside this
+		browser tab using WebAssembly. Nothing is uploaded to any server, and
+		everything is wiped from memory when signing finishes or you close the tab.
+	</div>
+
+	<label>Certificate (.p12)</label>
+	<input type="file" id="p12" accept=".p12">
+
+	<label>P12 Password</label>
+	<input type="password" id="pw" placeholder="password" autocomplete="off">
+
+	<label>Provisioning Profile (.mobileprovision)</label>
+	<input type="file" id="prov" accept=".mobileprovision">
+
+	<label>App to sign (.ipa)</label>
+	<input type="file" id="ipa" accept=".ipa">
+
+	<button id="go">Sign</button>
+
+	<div id="log"></div>
+	<div id="result"></div>
+</div>
+
+<script src="zsign.js"></script>
+<script>
+const logEl = document.getElementById('log');
+const resultEl = document.getElementById('result');
+function log(msg) { logEl.textContent += msg + '\n'; logEl.scrollTop = logEl.scrollHeight; }
+
+async function readFile(input) {
+	const f = input.files[0];
+	if (!f) return null;
+	return { name: f.name, data: new Uint8Array(await f.arrayBuffer()) };
+}
+
+document.getElementById('go').addEventListener('click', async () => {
+	const btn = document.getElementById('go');
+	logEl.textContent = '';
+	resultEl.innerHTML = '';
+
+	const p12 = await readFile(document.getElementById('p12'));
+	const prov = await readFile(document.getElementById('prov'));
+	const ipa = await readFile(document.getElementById('ipa'));
+	const pw = document.getElementById('pw').value;
+
+	if (!p12 || !prov || !ipa) { log('Please select a .p12, .mobileprovision, and .ipa.'); return; }
+
+	btn.disabled = true;
+	log('Loading signer…');
+
+	let mod;
+	try {
+		mod = await ZsignModule({ print: log, printErr: log, noInitialRun: true });
+
+		// Write inputs into the in-memory virtual filesystem.
+		mod.FS.writeFile('/cert.p12', p12.data);
+		mod.FS.writeFile('/prof.mobileprovision', prov.data);
+		mod.FS.writeFile('/in.ipa', ipa.data);
+
+		log('Signing…');
+		let code = 0;
+		try {
+			mod.callMain(['-k', '/cert.p12', '-p', pw, '-m', '/prof.mobileprovision',
+			              '-o', '/out.ipa', '/in.ipa']);
+		} catch (e) {
+			if (e && typeof e.status === 'number') code = e.status;
+			else throw e;
+		}
+
+		let out;
+		try { out = mod.FS.readFile('/out.ipa'); }
+		catch { out = null; }
+
+		if (!out || out.length === 0) {
+			log('\nSigning failed — check the certificate, password, and profile above.');
+		} else {
+			const blob = new Blob([out], { type: 'application/octet-stream' });
+			const url = URL.createObjectURL(blob);
+			const base = ipa.name.replace(/\.ipa$/i, '');
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = base + '-signed.ipa';
+			a.className = 'download';
+			a.textContent = 'Download signed IPA';
+			resultEl.appendChild(a);
+			log('\nDone. Signed IPA ready (' + (out.length / 1048576).toFixed(1) + ' MB).');
+		}
+	} catch (err) {
+		log('\nError: ' + (err && err.message ? err.message : err));
+	} finally {
+		// Wipe every trace of the cert/app from the virtual FS and memory.
+		if (mod && mod.FS) {
+			for (const p of ['/cert.p12', '/prof.mobileprovision', '/in.ipa', '/out.ipa']) {
+				try { mod.FS.unlink(p); } catch {}
+			}
+		}
+		mod = null;
+		document.getElementById('pw').value = '';
+		document.getElementById('p12').value = '';
+		document.getElementById('prov').value = '';
+		btn.disabled = false;
+	}
+});
+</script>
+</body>
+</html>
